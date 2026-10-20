@@ -1,0 +1,580 @@
+<!doctype html>
+<html lang="nb">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0037F8">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Smygjakt">
+<title>Smygjakt</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🦌</text></svg>">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{
+  --gd-lysgul:#FFFADD; --gd-gul:#F9FF8C; --gd-lysbla:#B0C4FF; --gd-bla:#0037F8; --gd-gra:#E8E8E8; --gd-svart:#00030D;
+  --panel:#FFFADD; --panel-2:#FFFFFF; --ink:#00030D; --ink-2:#4a4d57; --line:#00030D1f;
+  --accent:#0037F8; --accent-ink:#FFFFFF; --chip:#B0C4FF; --chip-ink:#00030D;
+  --warn:#F9FF8C; --warn-ink:#00030D; --danger:#d93a3a;
+  --shadow:0 2px 10px rgba(0,3,13,.18);
+  --font:Matter, Arial, Helvetica, sans-serif;
+  color-scheme:light;
+  box-sizing:border-box;
+  padding-top:env(safe-area-inset-top,0px);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --panel:#00030D; --panel-2:#11141f; --ink:#FFFADD; --ink-2:#c9c6b0; --line:#FFFADD26;
+    --accent:#B0C4FF; --accent-ink:#00030D; --chip:#1b2a66; --chip-ink:#FFFADD;
+    --shadow:0 2px 12px rgba(0,0,0,.55); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --panel:#00030D; --panel-2:#11141f; --ink:#FFFADD; --ink-2:#c9c6b0; --line:#FFFADD26;
+  --accent:#B0C4FF; --accent-ink:#00030D; --chip:#1b2a66; --chip-ink:#FFFADD;
+  --shadow:0 2px 12px rgba(0,0,0,.55); color-scheme:dark;
+}
+*,*::before,*::after{box-sizing:inherit}
+html,body{height:100%;margin:0}
+body{background:var(--panel);color:var(--ink);font-family:var(--font);font-size:15px;line-height:1.35;-webkit-tap-highlight-color:transparent;overflow:hidden}
+#map{position:fixed;inset:0;z-index:0;background:#dfe6d8}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+button:focus-visible{outline:3px solid var(--accent);outline-offset:2px}
+.panel{background:var(--panel);color:var(--ink);box-shadow:var(--shadow);border-radius:14px}
+
+/* Vind */
+#wind{position:fixed;z-index:500;left:10px;top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;gap:12px;align-items:center;padding:10px 14px 10px 10px;max-width:calc(100% - 90px);text-align:left}
+#windDial{width:58px;height:58px;flex:none}
+#windDial .arrow{transition:transform .6s ease}
+#windMain{font-size:24px;font-weight:700;letter-spacing:-.01em;line-height:1.05}
+#windMain small{font-size:14px;font-weight:400}
+#windFrom{font-size:15px;font-weight:600}
+#windMeta{font-size:12px;color:var(--ink-2);margin-top:2px}
+#windHours{display:none;gap:10px;margin-top:6px;font-size:12px;color:var(--ink-2)}
+#wind.open #windHours{display:flex}
+#windHours span{display:flex;align-items:center;gap:3px}
+#windHours svg{width:14px;height:14px}
+
+/* Knapper til høyre */
+#tools{position:fixed;z-index:500;right:10px;top:calc(env(safe-area-inset-top,0px) + 10px);display:flex;flex-direction:column;gap:10px}
+.fab{width:50px;height:50px;border-radius:50%;display:grid;place-items:center;background:var(--panel);color:var(--ink);box-shadow:var(--shadow)}
+.fab svg{width:24px;height:24px}
+.fab.on{background:var(--accent);color:var(--accent-ink)}
+
+#layers{position:fixed;z-index:600;right:70px;top:calc(env(safe-area-inset-top,0px) + 10px);padding:14px;width:230px;display:none}
+#layers.open{display:block}
+#layers h3{margin:0 0 8px;font-size:13px;font-weight:600;color:var(--ink-2)}
+#layers label{display:flex;align-items:center;gap:10px;padding:7px 0;font-size:15px}
+#layers input{width:20px;height:20px;accent-color:var(--gd-bla)}
+#layers hr{border:0;border-top:1px solid var(--line);margin:8px 0}
+
+/* Statuschips */
+#chips{position:fixed;z-index:450;left:10px;right:10px;display:flex;flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.chip{pointer-events:auto;background:var(--chip);color:var(--chip-ink);padding:7px 12px;border-radius:999px;font-size:13px;box-shadow:var(--shadow)}
+.chip.warn{background:var(--warn);color:var(--warn-ink);font-weight:600}
+.chip.danger{background:var(--danger);color:#fff;font-weight:600}
+
+/* Eiendomskort */
+#parcel{position:fixed;z-index:520;left:10px;right:10px;display:none;padding:12px 14px;align-items:center;gap:12px}
+#parcel.show{display:flex}
+#parcel .t{font-size:17px;font-weight:700}
+#parcel .s{font-size:13px;color:var(--ink-2)}
+#parcel .x{margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;font-size:22px;color:var(--ink-2)}
+
+/* Bunnark */
+#sheet{position:fixed;z-index:510;left:0;right:0;bottom:0;border-radius:18px 18px 0 0;padding:14px 16px calc(env(safe-area-inset-bottom,0px) + 14px)}
+#sheet .row{display:flex;gap:10px;align-items:center}
+.btn{flex:1;min-height:50px;border-radius:12px;font-weight:700;font-size:16px;display:flex;align-items:center;justify-content:center;gap:8px;padding:0 14px}
+.btn.primary{background:var(--accent);color:var(--accent-ink)}
+.btn.ghost{background:transparent;border:1.5px solid var(--line);color:var(--ink)}
+.btn.small{flex:none;min-height:44px;font-size:14px;font-weight:600}
+.hint{font-size:14px;color:var(--ink-2);margin:0 0 10px}
+.step{font-size:17px;font-weight:700;margin:0 0 10px}
+.progress{height:6px;background:var(--line);border-radius:6px;overflow:hidden;margin:6px 0 4px}
+.progress i{display:block;height:100%;width:0;background:var(--gd-bla);transition:width .25s}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px}
+.stat b{display:block;font-size:19px;font-weight:700;letter-spacing:-.01em}
+.stat span{font-size:12px;color:var(--ink-2)}
+.note{font-size:13px;padding:8px 10px;border-radius:10px;margin:0 0 10px;background:var(--gd-gul);color:var(--gd-svart)}
+.note.ok{background:var(--gd-lysbla)}
+details{margin-top:10px;font-size:13px;color:var(--ink-2)}
+details summary{cursor:pointer;color:var(--ink);font-weight:600;padding:4px 0}
+details p{margin:6px 0}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--ink-2);margin-top:8px}
+.legend i{display:inline-block;width:18px;height:10px;border-radius:3px;vertical-align:-1px;margin-right:5px}
+
+.leaflet-control-attribution{font-size:10px;max-width:70vw}
+.leaflet-container{font-family:var(--font)}
+.me-dot{width:20px;height:20px;border-radius:50%;background:#0037F8;border:3px solid #fff;box-shadow:0 0 0 2px #0037F855,0 1px 6px rgba(0,0,0,.4)}
+.pin{width:30px;height:30px;transform:translate(-2px,-26px)}
+@media (prefers-reduced-motion: reduce){#windDial .arrow,.progress i{transition:none}}
+</style>
+</head>
+<body>
+<div id="map" role="application" aria-label="Kart"></div>
+
+<button id="wind" class="panel" aria-label="Vind. Trykk for å vise de neste timene">
+  <svg id="windDial" viewBox="0 0 60 60" aria-hidden="true">
+    <circle cx="30" cy="30" r="27" fill="none" stroke="currentColor" stroke-opacity=".25" stroke-width="2"/>
+    <text x="30" y="11" text-anchor="middle" font-size="8" font-weight="700" fill="currentColor">N</text>
+    <g class="arrow" style="transform-origin:30px 30px">
+      <path d="M30 48 L30 17" stroke="#0037F8" stroke-width="4" stroke-linecap="round"/>
+      <path d="M30 50 L22 38 L30 41 L38 38 Z" fill="#0037F8"/>
+    </g>
+  </svg>
+  <div>
+    <div id="windMain">– <small>m/s</small></div>
+    <div id="windFrom">Henter vind …</div>
+    <div id="windMeta"></div>
+    <div id="windHours"></div>
+  </div>
+</button>
+
+<div id="tools">
+  <button class="fab" id="btnLayers" aria-label="Kartlag">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5Z"/><path d="m2 13 10 5 10-5"/><path d="m2 18 10 5 10-5" opacity=".5"/></svg>
+  </button>
+  <button class="fab" id="btnLocate" aria-label="Vis min posisjon">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+  </button>
+</div>
+
+<div id="layers" class="panel" role="dialog" aria-label="Kartlag">
+  <h3>Bakgrunnskart</h3>
+  <label><input type="radio" name="base" value="topo" checked> Topografisk</label>
+  <label><input type="radio" name="base" value="toporaster"> Topografisk raster</label>
+  <label><input type="radio" name="base" value="topograatone"> Gråtone</label>
+  <hr>
+  <h3>Vis i kartet</h3>
+  <label><input type="checkbox" id="optParcels" checked> Eiendomsgrenser</label>
+  <label><input type="checkbox" id="optScent" checked> Min duftsone</label>
+  <label><input type="checkbox" id="optDanger" checked> Duftsone ved målet</label>
+</div>
+
+<div id="chips" aria-live="polite"></div>
+
+<div id="parcel" class="panel" role="status">
+  <div><div class="t" id="parcelT"></div><div class="s" id="parcelS"></div></div>
+  <button class="x" id="parcelX" aria-label="Lukk">×</button>
+</div>
+
+<section id="sheet" class="panel" aria-live="polite"></section>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+(() => {
+'use strict';
+const $ = s => document.querySelector(s);
+const nf = (v, d=0) => v.toLocaleString('nb-NO',{maximumFractionDigits:d, minimumFractionDigits:d});
+const D2R = Math.PI/180;
+const DIRS = ['nord','nordøst','øst','sørøst','sør','sørvest','vest','nordvest'];
+const DIRS_S = ['N','NØ','Ø','SØ','S','SV','V','NV'];
+const dirName = deg => DIRS[Math.round(((deg%360)+360)%360/45)%8];
+const dirShort = deg => DIRS_S[Math.round(((deg%360)+360)%360/45)%8];
+const angDiff = (a,b) => { let d = Math.abs(((a-b)%360+360)%360); return d>180?360-d:d; };
+
+/* ---------- Kart ---------- */
+const map = L.map('map',{zoomControl:false, tap:true}).setView([60.7945, 11.0680], 13); // Hamar
+const kv = n => L.tileLayer(`https://cache.kartverket.no/v1/wmts/1.0.0/${n}/default/webmercator/{z}/{y}/{x}.png`,
+  {maxNativeZoom:18, maxZoom:19, attribution:'© <a href="https://www.kartverket.no">Kartverket</a>'});
+const bases = {topo:kv('topo'), toporaster:kv('toporaster'), topograatone:kv('topograatone')};
+let base = bases.topo.addTo(map);
+let tileErr = 0, tileOk = 0, tileWarned = false;
+Object.values(bases).forEach(l => {
+  l.on('tileload', () => tileOk++);
+  l.on('tileerror', () => {
+    if (++tileErr >= 4 && tileOk === 0 && !tileWarned){
+      tileWarned = true;
+      const inFrame = window.self !== window.top;
+      toast(inFrame
+        ? 'Bakgrunnskartet blokkeres i denne forhåndsvisningen. Åpne filen i en vanlig nettleser.'
+        : 'Får ikke kontakt med Kartverkets kartserver. Sjekk nettforbindelsen.');
+    }
+  });
+});
+const parcels = L.tileLayer.wms('https://wms.geonorge.no/skwms1/wms.matrikkelkart',{
+  layers:'eiendomsgrense', format:'image/png', transparent:true, version:'1.3.0',
+  minZoom:13, maxZoom:19, tileSize:512, zIndex:5, attribution:'Eiendom: Matrikkelen'
+}).addTo(map);
+L.control.scale({imperial:false, position:'bottomleft'}).addTo(map);
+
+/* ---------- Tilstand ---------- */
+let me = null, meMarker = null, meAcc = null, follow = false, firstFix = true;
+let wind = null, windAt = null;
+let mode = 'idle';      // idle | pickStart | pickTarget | computing | result | error
+let startLL = null, targetLL = null, grid = null, lastRoute = null;
+const lyr = { scent: L.layerGroup().addTo(map), danger: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), parcel: L.layerGroup().addTo(map), pins: L.layerGroup().addTo(map) };
+
+/* ---------- Geometri ---------- */
+function offset(ll, bearingDeg, meters){
+  const kx = 111320*Math.cos(ll.lat*D2R), ky = 110574;
+  return L.latLng(ll.lat + Math.cos(bearingDeg*D2R)*meters/ky, ll.lng + Math.sin(bearingDeg*D2R)*meters/kx);
+}
+function wedge(ll, bearing, half, len){
+  const pts = [ll];
+  for(let a=-half; a<=half+0.01; a+=half/8) pts.push(offset(ll, bearing+a, len));
+  return pts;
+}
+// Duftsone: rekkevidde og åpningsvinkel avhenger av vindstyrke (svak vind = mer uforutsigbar)
+const scentRange = s => Math.max(500, Math.min(2500, 400 + 260*s));
+const scentHalf  = s => s < 1 ? 70 : s < 2.5 ? 50 : 32;
+
+/* ---------- Chips ---------- */
+function chips(){
+  const c = [];
+  if (map.getZoom() < 13 && $('#optParcels').checked) c.push(['', 'Zoom inn for å se eiendomsgrenser']);
+  if (me && targetLL && wind){
+    const R = scentRange(wind.speed), H = scentHalf(wind.speed);
+    const d = map.distance(me, targetLL);
+    const b = bearing(me, targetLL);
+    if (d < R && angDiff(b, wind.to) < H) c.push(['danger','Du er i duftsonen – vinden bærer lukten mot målet']);
+  }
+  if (wind && wind.speed < 1) c.push(['warn','Svak og skiftende vind – sjekk med vindpuster']);
+  $('#chips').innerHTML = c.map(([k,t]) => `<div class="chip ${k}">${t}</div>`).join('');
+  positionOverlays();
+}
+function bearing(a,b){
+  const kx = 111320*Math.cos(((a.lat+b.lat)/2)*D2R);
+  return (Math.atan2((b.lng-a.lng)*kx, (b.lat-a.lat)*110574)/D2R + 360) % 360;
+}
+function positionOverlays(){
+  const h = $('#sheet').offsetHeight;
+  $('#chips').style.bottom = (h + 10) + 'px';
+  const ch = $('#chips').offsetHeight;
+  $('#parcel').style.bottom = (h + 10 + (ch ? ch + 8 : 0)) + 'px';
+  document.querySelectorAll('.leaflet-bottom').forEach(e => e.style.bottom = h + 'px');
+}
+
+/* ---------- Posisjon ---------- */
+const meIcon = L.divIcon({className:'', html:'<div class="me-dot"></div>', iconSize:[20,20], iconAnchor:[10,10]});
+function onPos(p){
+  me = L.latLng(p.coords.latitude, p.coords.longitude);
+  if (!meMarker){
+    meAcc = L.circle(me,{radius:p.coords.accuracy, color:'#0037F8', weight:1, fillOpacity:.08, interactive:false}).addTo(map);
+    meMarker = L.marker(me,{icon:meIcon, interactive:false, zIndexOffset:1000}).addTo(map);
+  } else { meMarker.setLatLng(me); meAcc.setLatLng(me).setRadius(p.coords.accuracy); }
+  if (firstFix){ firstFix = false; map.setView(me, 15); loadWind(); }
+  else if (follow) map.panTo(me);
+  if (windAt && map.distance(me, windAt) > 1500) loadWind();
+  drawScent(); chips();
+}
+function onPosErr(e){
+  if (firstFix){ firstFix = false; loadWind(); toast(e.code === 1 ? 'Posisjon er ikke tillatt. Vind hentes for kartsenteret.' : 'Fant ikke posisjonen din ennå.'); }
+}
+if ('geolocation' in navigator){
+  navigator.geolocation.watchPosition(onPos, onPosErr, {enableHighAccuracy:true, maximumAge:5000, timeout:25000});
+} else { firstFix = false; setTimeout(loadWind, 300); }
+
+$('#btnLocate').onclick = () => {
+  if (!me){ toast('Venter på GPS-posisjon …'); return; }
+  follow = !follow; $('#btnLocate').classList.toggle('on', follow);
+  if (follow) map.setView(me, Math.max(map.getZoom(), 15));
+};
+map.on('dragstart', () => { if (follow){ follow = false; $('#btnLocate').classList.remove('on'); } });
+map.on('zoomend', chips);
+
+/* ---------- Vind (MET Nordic via Open-Meteo) ---------- */
+async function loadWind(){
+  const at = me || map.getCenter();
+  $('#windMeta').textContent = 'Oppdaterer …';
+  try{
+    const u = `https://api.open-meteo.com/v1/forecast?latitude=${at.lat.toFixed(4)}&longitude=${at.lng.toFixed(4)}`+
+      `&current=wind_speed_10m,wind_direction_10m,wind_gusts_10m&hourly=wind_speed_10m,wind_direction_10m`+
+      `&forecast_hours=5&wind_speed_unit=ms&timezone=auto&models=metno_seamless`;
+    const r = await fetch(u); if (!r.ok) throw new Error(r.status);
+    const j = await r.json();
+    const c = j.current;
+    wind = { speed:c.wind_speed_10m, from:c.wind_direction_10m, to:(c.wind_direction_10m+180)%360, gust:c.wind_gusts_10m, time:new Date() };
+    windAt = L.latLng(at.lat, at.lng);
+    $('#windMain').innerHTML = `${nf(wind.speed,1)} <small>m/s</small>`;
+    $('#windFrom').textContent = `Fra ${dirName(wind.from)}`;
+    $('#windMeta').textContent = `Kast ${nf(wind.gust,1)} m/s, oppdatert ${wind.time.toLocaleTimeString('nb-NO',{hour:'2-digit',minute:'2-digit'})}${me?'':' (kartsenter)'}`;
+    $('#windDial .arrow').style.transform = `rotate(${wind.to + 180}deg)`;
+    const H = j.hourly, hrs = [];
+    for (let i=1; i<Math.min(4, H.time.length); i++){
+      const t = H.time[i].slice(11,16), f = H.wind_direction_10m[i];
+      hrs.push(`<span><svg viewBox="0 0 20 20"><path d="M10 3v12M5 11l5 6 5-6" stroke="currentColor" stroke-width="2.4" fill="none" transform="rotate(${f} 10 10)"/></svg>${t} ${dirShort(f)} ${nf(H.wind_speed_10m[i],1)}</span>`);
+    }
+    $('#windHours').innerHTML = hrs.join('');
+    drawScent(); drawDanger(); chips();
+  }catch(e){
+    $('#windMeta').textContent = 'Kunne ikke hente vind. Trykk for å prøve igjen.';
+  }
+}
+let windTapTimer = null;
+$('#wind').onclick = () => {
+  $('#wind').classList.toggle('open');
+  if (!wind || (Date.now() - wind.time) > 5*60e3) loadWind();
+};
+setInterval(loadWind, 10*60e3);
+
+function drawScent(){
+  lyr.scent.clearLayers();
+  if (!wind || !me || !$('#optScent').checked) return;
+  L.polygon(wedge(me, wind.to, scentHalf(wind.speed), scentRange(wind.speed)),
+    {color:'#0037F8', weight:1, dashArray:'4 6', fillColor:'#B0C4FF', fillOpacity:.22, interactive:false}).addTo(lyr.scent);
+}
+function drawDanger(){
+  lyr.danger.clearLayers();
+  if (!wind || !targetLL || !$('#optDanger').checked) return;
+  // Området der vinden blåser fra deg mot målet = motsatt side av vindretningen
+  L.polygon(wedge(targetLL, wind.from, scentHalf(wind.speed), scentRange(wind.speed)),
+    {color:'#d93a3a', weight:1.5, fillColor:'#d93a3a', fillOpacity:.13, interactive:false}).addTo(lyr.danger);
+}
+
+/* ---------- Lagvalg ---------- */
+$('#btnLayers').onclick = e => { e.stopPropagation(); $('#layers').classList.toggle('open'); $('#btnLayers').classList.toggle('on'); };
+map.on('click', () => { $('#layers').classList.remove('open'); $('#btnLayers').classList.remove('on'); });
+document.querySelectorAll('input[name=base]').forEach(r => r.onchange = () => { map.removeLayer(base); base = bases[r.value].addTo(map); });
+$('#optParcels').onchange = e => { e.target.checked ? parcels.addTo(map) : map.removeLayer(parcels); chips(); };
+$('#optScent').onchange = drawScent;
+$('#optDanger').onchange = drawDanger;
+
+/* ---------- Eiendomsoppslag ---------- */
+async function lookupParcel(ll){
+  lyr.parcel.clearLayers();
+  $('#parcelT').textContent = 'Slår opp eiendom …'; $('#parcelS').textContent = '';
+  $('#parcel').classList.add('show'); positionOverlays();
+  try{
+    const q = `nord=${ll.lat.toFixed(6)}&ost=${ll.lng.toFixed(6)}&koordsys=4258`;
+    const [er, kr] = await Promise.all([
+      fetch(`https://ws.geonorge.no/eiendom/v1/punkt/omrader?${q}&radius=1`).then(r=>r.json()),
+      fetch(`https://ws.geonorge.no/kommuneinfo/v1/punkt?${q}`).then(r=>r.ok?r.json():null).catch(()=>null)
+    ]);
+    const f = er.features && er.features[0];
+    if (!f){ $('#parcelT').textContent = 'Ingen eiendom funnet her'; $('#parcelS').textContent = kr ? `${kr.kommunenavn} kommune` : ''; return; }
+    const p = f.properties;
+    $('#parcelT').textContent = `Gnr/bnr ${p.matrikkelnummertekst}`;
+    $('#parcelS').textContent = `${kr ? kr.kommunenavn + ' kommune' : 'Kommune ' + p.kommunenummer}, grensenøyaktighet ${String(p['nøyaktighetsklasseteig']||'ukjent').toLowerCase()}`;
+    L.geoJSON(f,{style:{color:'#0037F8', weight:3, fillColor:'#F9FF8C', fillOpacity:.25}, interactive:false}).addTo(lyr.parcel);
+  }catch(e){ $('#parcelT').textContent = 'Kunne ikke slå opp eiendom'; $('#parcelS').textContent = 'Sjekk dekningen og prøv igjen.'; }
+}
+$('#parcelX').onclick = () => { $('#parcel').classList.remove('show'); lyr.parcel.clearLayers(); positionOverlays(); };
+
+/* ---------- Pins ---------- */
+const pin = (fill, label) => L.divIcon({className:'', iconSize:[30,30], iconAnchor:[13,4], html:
+  `<svg class="pin" viewBox="0 0 30 30"><path d="M4 2v27" stroke="#00030D" stroke-width="2.5"/><path d="M5 3h20l-5 6 5 6H5z" fill="${fill}" stroke="#00030D" stroke-width="1.5"/><text x="12" y="12.5" font-size="8" font-weight="700" text-anchor="middle" fill="#00030D">${label}</text></svg>`});
+function drawPins(){
+  lyr.pins.clearLayers();
+  if (startLL && !(me && startLL === me)) L.marker(startLL,{icon:pin('#B0C4FF','S'), interactive:false}).addTo(lyr.pins);
+  if (targetLL) L.marker(targetLL,{icon:pin('#F9FF8C','M'), interactive:false}).addTo(lyr.pins);
+}
+
+/* ---------- Kartklikk ---------- */
+map.on('click', e => {
+  if (mode === 'pickStart'){ startLL = e.latlng; drawPins(); setMode('pickTarget'); return; }
+  if (mode === 'pickTarget'){ targetLL = e.latlng; drawPins(); drawDanger(); chips(); computeRoute(); return; }
+  if (mode === 'computing') return;
+  lookupParcel(e.latlng);
+});
+
+/* ---------- Terreng (Kartverket høydedata: DTM + arealtype fra N50) ---------- */
+const TERRAIN = {
+  'ÅpentOmråde':1.0, 'DyrketMark':1.1, 'Skog':1.2, 'Park':1.1, 'Golfbane':1.1, 'SportIdrettPlass':1.1,
+  'Myr':2.7, 'SnøIsbre':2.6, 'Elv':9, 'Tettbebyggelse':1.7, 'BymessigBebyggelse':1.9, 'Industriområde':1.9,
+  'Innsjø':Infinity, 'Havflate':Infinity, 'Hav':Infinity
+};
+const terrCost = t => (t in TERRAIN) ? TERRAIN[t] : 1.25;
+
+async function fetchTerrain(pts, onProg){
+  const chunks = []; for (let i=0; i<pts.length; i+=50) chunks.push(i);
+  const z = new Float32Array(pts.length).fill(NaN), t = new Array(pts.length).fill(null);
+  let done = 0, idx = 0;
+  async function worker(){
+    while (idx < chunks.length){
+      const s = chunks[idx++], part = pts.slice(s, s+50).map(p => [+p[0].toFixed(6), +p[1].toFixed(6)]);
+      const url = 'https://ws.geonorge.no/hoydedata/v1/punkt?koordsys=4258&geojson=false&punkter=' + encodeURIComponent(JSON.stringify(part));
+      let j = null;
+      for (let a=0; a<3 && !j; a++){
+        try{ const r = await fetch(url); if (r.ok) j = await r.json(); else await new Promise(r=>setTimeout(r, 600*(a+1))); }
+        catch(e){ await new Promise(r=>setTimeout(r, 600*(a+1))); }
+      }
+      if (!j) throw new Error('terreng');
+      j.punkter.forEach((p,k) => { z[s+k] = (p.z==null) ? NaN : p.z; t[s+k] = p.terreng; });
+      onProg(++done, chunks.length);
+    }
+  }
+  await Promise.all(Array.from({length:6}, worker));
+  return {z, t};
+}
+
+function makeGridSpec(a, b){
+  const lat0 = (a.lat+b.lat)/2, lon0 = (a.lng+b.lng)/2;
+  const kx = 111320*Math.cos(lat0*D2R), ky = 110574;
+  const ax=(a.lng-lon0)*kx, ay=(a.lat-lat0)*ky, bx=(b.lng-lon0)*kx, by=(b.lat-lat0)*ky;
+  const dist = Math.hypot(bx-ax, by-ay), pad = Math.max(350, dist*0.4);
+  const minx = Math.min(ax,bx)-pad, maxx = Math.max(ax,bx)+pad, miny = Math.min(ay,by)-pad, maxy = Math.max(ay,by)+pad;
+  let s = Math.max(20, Math.max(maxx-minx, maxy-miny)/44), nx, ny;
+  do { nx = Math.ceil((maxx-minx)/s)+1; ny = Math.ceil((maxy-miny)/s)+1; if (nx*ny > 2000) s *= 1.08; } while (nx*ny > 2000);
+  return {lat0, lon0, kx, ky, minx, miny, s, nx, ny, dist};
+}
+const toXY = (G, ll) => [(ll.lng-G.lon0)*G.kx, (ll.lat-G.lat0)*G.ky];
+const toLL = (G, x, y) => L.latLng(G.lat0 + y/G.ky, G.lon0 + x/G.kx);
+const cellOf = (G, ll) => { const [x,y] = toXY(G, ll); return [Math.round((x-G.minx)/G.s), Math.round((y-G.miny)/G.s)]; };
+function insideGrid(G, ll){
+  const [x,y] = toXY(G, ll), m = 250;
+  return x > G.minx+m && x < G.minx+(G.nx-1)*G.s-m && y > G.miny+m && y < G.miny+(G.ny-1)*G.s-m;
+}
+
+/* ---------- Rutesøk (A*) ---------- */
+function solve(G, sLL, tLL, w){
+  const {nx, ny, s} = G, N = nx*ny;
+  const [si, sj] = cellOf(G, sLL), [ti, tj] = cellOf(G, tLL);
+  const S = sj*nx+si, T = tj*nx+ti;
+  const [tx, ty] = toXY(G, tLL);
+  // Duftfaktor per celle: høy kost der vinden bærer lukten din mot målet
+  const scent = new Float32Array(N).fill(1);
+  if (w && w.speed > 0.2){
+    const R = scentRange(w.speed), H = scentHalf(w.speed);
+    for (let j=0; j<ny; j++) for (let i=0; i<nx; i++){
+      const x = G.minx+i*s, y = G.miny+j*s, dx = tx-x, dy = ty-y, d = Math.hypot(dx,dy);
+      if (d < 40 || d > R) continue;
+      const b = (Math.atan2(dx,dy)/D2R+360)%360, a = angDiff(b, w.to);
+      if (a < H) scent[j*nx+i] = 1 + 9*(1-a/H)*(1-d/R) + 1.5;
+    }
+  }
+  const wtx = w ? Math.sin(w.to*D2R) : 0, wty = w ? Math.cos(w.to*D2R) : 0;
+  const ww = w ? Math.max(0.25, Math.min(1, w.speed/4)) : 0;
+  const tc = new Float32Array(N); for (let k=0; k<N; k++) tc[k] = terrCost(G.t[k]);
+  tc[S] = Math.min(tc[S], 1.5); tc[T] = Math.min(tc[T], 1.5);
+  const NB = [[1,0],[-1,0],[0,1],[0,-1],[1,1],[1,-1],[-1,1],[-1,-1]];
+  const vmax = 6/3.6;
+  const g = new Float64Array(N).fill(Infinity), came = new Int32Array(N).fill(-1), closed = new Uint8Array(N);
+  // binær heap
+  const hk = [], hv = [];
+  const push = (k,v) => { hk.push(k); hv.push(v); let i = hk.length-1; while (i>0){ const p=(i-1)>>1; if (hv[p] <= hv[i]) break; [hk[p],hk[i]]=[hk[i],hk[p]]; [hv[p],hv[i]]=[hv[i],hv[p]]; i=p; } };
+  const pop = () => { const top = hk[0]; const lk = hk.pop(), lv = hv.pop(); if (hk.length){ hk[0]=lk; hv[0]=lv; let i=0; for(;;){ const l=2*i+1, r=l+1; let m=i; if (l<hk.length && hv[l]<hv[m]) m=l; if (r<hk.length && hv[r]<hv[m]) m=r; if (m===i) break; [hk[m],hk[i]]=[hk[i],hk[m]]; [hv[m],hv[i]]=[hv[i],hv[m]]; i=m; } } return top; };
+  const h = k => Math.hypot((k%nx)-ti, ((k/nx)|0)-tj)*s/vmax;
+  g[S] = 0; push(S, h(S));
+  while (hk.length){
+    const u = pop(); if (closed[u]) continue; closed[u] = 1; if (u === T) break;
+    const ui = u%nx, uj = (u/nx)|0, zu = G.z[u];
+    for (const [di,dj] of NB){
+      const vi = ui+di, vj = uj+dj; if (vi<0||vj<0||vi>=nx||vj>=ny) continue;
+      const v = vj*nx+vi; if (closed[v] || !isFinite(tc[v])) continue;
+      const d = (di&&dj) ? s*Math.SQRT2 : s;
+      const zv = G.z[v], dz = (isNaN(zu)||isNaN(zv)) ? 0 : zv-zu, sl = dz/d;
+      let t = d / (vmax*Math.exp(-3.5*Math.abs(sl+0.05)));        // Toblers turformel
+      if (Math.abs(sl) > 0.7) t *= 6;                               // svært bratt
+      const c = (di*wtx + dj*wty)/Math.hypot(di,dj);
+      t *= tc[v] * (1 + 0.7*Math.max(0,c)*ww) * scent[v];          // terreng, medvind, duft
+      const ng = g[u] + t;
+      if (ng < g[v]){ g[v] = ng; came[v] = u; push(v, ng + h(v)); }
+    }
+  }
+  if (!closed[T]) return null;
+  const cells = []; for (let k=T; k!==-1; k=came[k]) cells.push(k); cells.reverse();
+  // Statistikk
+  let len=0, up=0, down=0, myr=0, exposed=0, secs=0;
+  for (let n=1; n<cells.length; n++){
+    const a = cells[n-1], b = cells[n], d = Math.hypot((b%nx)-(a%nx), ((b/nx)|0)-((a/nx)|0))*s;
+    const dz = (isNaN(G.z[a])||isNaN(G.z[b])) ? 0 : G.z[b]-G.z[a];
+    len += d; if (dz>0) up += dz; else down -= dz;
+    secs += d/(vmax*Math.exp(-3.5*Math.abs(dz/d+0.05))) * Math.min(tc[b], 3);
+    if (G.t[b] === 'Myr') myr += d;
+    if (scent[b] > 1.6) exposed += d;
+  }
+  let pts = cells.map(k => toLL(G, G.minx+(k%nx)*s, G.miny+((k/nx)|0)*s));
+  pts[0] = sLL; pts[pts.length-1] = tLL;
+  pts = chaikin(chaikin(pts));
+  return {pts, len, up, down, myr, exposed, secs};
+}
+function chaikin(p){
+  if (p.length < 3) return p;
+  const o = [p[0]];
+  for (let i=0; i<p.length-1; i++){
+    const a=p[i], b=p[i+1];
+    o.push(L.latLng(a.lat*.75+b.lat*.25, a.lng*.75+b.lng*.25), L.latLng(a.lat*.25+b.lat*.75, a.lng*.25+b.lng*.75));
+  }
+  o.push(p[p.length-1]); return o;
+}
+
+async function computeRoute(){
+  if (!startLL || !targetLL) return;
+  const dist = map.distance(startLL, targetLL);
+  if (dist > 12000){ setMode('error', 'Målet er over 12 km unna. Velg et nærmere mål – ruteberegningen er laget for innsmyging.'); return; }
+  if (dist < 40){ setMode('error', 'Målet er for nær startpunktet.'); return; }
+  setMode('computing');
+  try{
+    if (!grid || !insideGrid(grid, startLL) || !insideGrid(grid, targetLL)){
+      const G = makeGridSpec(startLL, targetLL), pts = [];
+      for (let j=0; j<G.ny; j++) for (let i=0; i<G.nx; i++){ const ll = toLL(G, G.minx+i*G.s, G.miny+j*G.s); pts.push([ll.lng, ll.lat]); }
+      const r = await fetchTerrain(pts, (d,n) => { $('#prog').style.width = (d/n*100)+'%'; $('#progT').textContent = `Henter høyde og terreng ${d} av ${n}`; });
+      G.z = r.z; G.t = r.t; grid = G;
+    }
+    $('#progT').textContent = 'Beregner rute …';
+    await new Promise(r => setTimeout(r, 30));
+    const res = solve(grid, startLL, targetLL, wind);
+    if (!res){ setMode('error', 'Fant ingen framkommelig rute. Målet kan være omgitt av vann – prøv et annet punkt.'); return; }
+    lastRoute = res; drawRoute(res); setMode('result');
+  }catch(e){
+    setMode('error', 'Klarte ikke å hente terrengdata. Sjekk mobildekningen og prøv igjen.');
+  }
+}
+function drawRoute(r){
+  lyr.route.clearLayers();
+  L.polyline(r.pts,{color:'#FFFFFF', weight:9, opacity:.9, interactive:false}).addTo(lyr.route);
+  L.polyline(r.pts,{color:'#0037F8', weight:5, interactive:false}).addTo(lyr.route);
+  map.fitBounds(L.latLngBounds(r.pts).pad(.15), {paddingBottomRight:[0, $('#sheet').offsetHeight], paddingTopLeft:[0, 90]});
+}
+function clearRoute(){
+  startLL = targetLL = lastRoute = null; lyr.route.clearLayers(); lyr.pins.clearLayers(); drawDanger(); chips(); setMode('idle');
+}
+
+/* ---------- Bunnark ---------- */
+function fmtTime(sec){ const m = Math.round(sec/60/5)*5 || 5; return m < 60 ? `${m} min` : `${Math.floor(m/60)} t ${m%60 ? (m%60)+' min' : ''}`.trim(); }
+function setMode(m, msg){
+  mode = m; const sh = $('#sheet');
+  if (m === 'idle'){
+    sh.innerHTML = `<p class="hint">Trykk i kartet for å se hvilken eiendom du står på.</p>
+      <div class="row"><button class="btn primary" id="bPlan">Planlegg rute</button></div>
+      <details><summary>Slik beregnes ruten</summary>
+      <p>Ruten søker den letteste veien gjennom terrenget basert på høydemodell (DTM) og arealtype fra Kartverket. Bratte partier, myr, snø og bebyggelse koster mer, og vann unngås.</p>
+      <p>Vinden fra MET Nordic legges inn på to måter: ruten unngår å gå med vinden i ryggen, og den holder deg utenfor det røde feltet, der vinden bærer lukten din mot målet. Ruten nærmer seg derfor målet med vinden mot deg.</p>
+      <p>Lokale vindforhold i terrenget kan avvike fra prognosen. Bruk vindpuster underveis, og husk at eiendomsgrensene er veiledende.</p></details>`;
+    $('#bPlan').onclick = () => { $('#parcel').classList.remove('show'); lyr.parcel.clearLayers(); targetLL = null; lyr.route.clearLayers();
+      if (me){ startLL = me; setMode('pickTarget'); } else setMode('pickStart'); drawPins(); };
+  } else if (m === 'pickStart'){
+    sh.innerHTML = `<p class="step">Trykk der du starter</p><p class="hint">GPS-posisjonen er ikke tilgjengelig, så velg startpunkt i kartet.</p>
+      <div class="row"><button class="btn ghost" id="bCancel">Avbryt</button></div>`;
+    $('#bCancel').onclick = clearRoute;
+  } else if (m === 'pickTarget'){
+    sh.innerHTML = `<p class="step">Trykk der du vil gå</p><p class="hint">${startLL === me ? 'Ruten starter fra din posisjon.' : 'Startpunkt er valgt.'} Velg der du regner med å finne dyrene.</p>
+      <div class="row"><button class="btn ghost" id="bCancel">Avbryt</button></div>`;
+    $('#bCancel').onclick = clearRoute;
+  } else if (m === 'computing'){
+    sh.innerHTML = `<p class="step">Beregner rute</p><div class="progress"><i id="prog"></i></div><p class="hint" id="progT">Henter høyde og terreng …</p>`;
+  } else if (m === 'result'){
+    const r = lastRoute;
+    const warn = !wind ? `<p class="note">Vinddata mangler – ruten tar bare hensyn til terreng.</p>`
+      : r.exposed > 30 ? `<p class="note">Ca. ${nf(r.exposed)} m av ruten går der vinden kan bære lukten mot målet. Vurder å gå en større bue.</p>`
+      : `<p class="note ok">Ruten holder deg unna duftsonen og nærmer seg målet med vinden fra ${dirName(wind.from)} mot deg.</p>`;
+    sh.innerHTML = `<div class="stats">
+        <div class="stat"><b>${r.len >= 1000 ? nf(r.len/1000,1)+' km' : nf(Math.round(r.len/10)*10)+' m'}</b><span>Lengde</span></div>
+        <div class="stat"><b>${nf(r.up)} m</b><span>Stigning</span></div>
+        <div class="stat"><b>${fmtTime(r.secs)}</b><span>Gangtid</span></div>
+        <div class="stat"><b>${nf(Math.round(r.myr/10)*10)} m</b><span>Myr</span></div></div>
+      ${warn}
+      <div class="row"><button class="btn primary" id="bRe">Beregn på nytt</button><button class="btn ghost small" id="bClr">Fjern rute</button></div>
+      <div class="legend"><span><i style="background:#0037F8"></i>Rute</span><span><i style="background:#d93a3a55;border:1px solid #d93a3a"></i>Duftsone ved målet</span><span><i style="background:#B0C4FF66;border:1px dashed #0037F8"></i>Din duftsone</span></div>`;
+    $('#bRe').onclick = async () => { if (me) startLL = me; await loadWind(); drawPins(); computeRoute(); };
+    $('#bClr').onclick = clearRoute;
+  } else if (m === 'error'){
+    sh.innerHTML = `<p class="step">Ingen rute</p><p class="hint">${msg}</p>
+      <div class="row"><button class="btn primary" id="bRetry">Prøv igjen</button><button class="btn ghost small" id="bClr">Avbryt</button></div>`;
+    $('#bRetry').onclick = () => targetLL && startLL ? computeRoute() : setMode('pickTarget');
+    $('#bClr').onclick = clearRoute;
+  }
+  requestAnimationFrame(positionOverlays);
+}
+function toast(t){
+  const c = document.createElement('div'); c.className = 'chip'; c.textContent = t;
+  $('#chips').appendChild(c); positionOverlays(); setTimeout(() => { c.remove(); positionOverlays(); }, 4500);
+}
+window.addEventListener('resize', positionOverlays);
+setMode('idle'); chips();
+})();
+</script>
+</body>
+</html>
