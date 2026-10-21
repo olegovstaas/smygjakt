@@ -209,7 +209,7 @@ L.control.scale({imperial:false, position:'bottomleft'}).addTo(map);
 let me = null, meMarker = null, meAcc = null, follow = false, firstFix = true;
 let wind = null, windAt = null;
 let mode = 'idle';      // idle | pickStart | pickTarget | computing | result | error
-let startLL = null, targetLL = null, grid = null, lastRoute = null;
+let startLL = null, targetLL = null, grid = null, lastRoute = null, startIsGps = false;
 const lyr = { scent: L.layerGroup().addTo(map), danger: L.layerGroup().addTo(map), route: L.layerGroup().addTo(map), parcel: L.layerGroup().addTo(map), pins: L.layerGroup().addTo(map) };
 
 /* ---------- Geometri ---------- */
@@ -365,13 +365,20 @@ const pin = (fill, label) => L.divIcon({className:'', iconSize:[30,30], iconAnch
   `<svg class="pin" viewBox="0 0 30 30"><path d="M4 2v27" stroke="#00030D" stroke-width="2.5"/><path d="M5 3h20l-5 6 5 6H5z" fill="${fill}" stroke="#00030D" stroke-width="1.5"/><text x="12" y="12.5" font-size="8" font-weight="700" text-anchor="middle" fill="#00030D">${label}</text></svg>`});
 function drawPins(){
   lyr.pins.clearLayers();
-  if (startLL && !(me && startLL === me)) L.marker(startLL,{icon:pin('#B0C4FF','S'), interactive:false}).addTo(lyr.pins);
-  if (targetLL) L.marker(targetLL,{icon:pin('#F9FF8C','M'), interactive:false}).addTo(lyr.pins);
+  const drag = mode === 'result' || mode === 'error' || mode === 'pickTarget';
+  if (startLL && !startIsGps){
+    const m = L.marker(startLL,{icon:pin('#B0C4FF','S'), draggable:drag, autoPan:true, keyboard:false}).addTo(lyr.pins);
+    m.on('dragend', () => { startLL = m.getLatLng(); if (targetLL) computeRoute(); else if (!me) loadWind(); });
+  }
+  if (targetLL){
+    const m = L.marker(targetLL,{icon:pin('#F9FF8C','M'), draggable:drag, autoPan:true, keyboard:false}).addTo(lyr.pins);
+    m.on('dragend', () => { targetLL = m.getLatLng(); drawDanger(); chips(); computeRoute(); });
+  }
 }
 
 /* ---------- Kartklikk ---------- */
 map.on('click', e => {
-  if (mode === 'pickStart'){ startLL = e.latlng; drawPins(); setMode('pickTarget'); if (!me) loadWind(); return; }
+  if (mode === 'pickStart'){ startLL = e.latlng; startIsGps = false; setMode('pickTarget'); drawPins(); if (!me) loadWind(); return; }
   if (mode === 'pickTarget'){ targetLL = e.latlng; drawPins(); drawDanger(); chips(); computeRoute(); return; }
   if (mode === 'computing') return;
   lookupParcel(e.latlng);
@@ -498,8 +505,10 @@ function chaikin(p){
   o.push(p[p.length-1]); return o;
 }
 
+let rerun = false;
 async function computeRoute(){
   if (!startLL || !targetLL) return;
+  if (mode === 'computing'){ rerun = true; return; }
   const dist = map.distance(startLL, targetLL);
   if (dist > 12000){ setMode('error', 'Målet er over 12 km unna. Velg et nærmere mål – ruteberegningen er laget for innsmyging.'); return; }
   if (dist < 40){ setMode('error', 'Målet er for nær startpunktet.'); return; }
@@ -518,7 +527,8 @@ async function computeRoute(){
     await new Promise(r => setTimeout(r, 30));
     const res = solve(grid, startLL, targetLL, wind);
     if (!res){ setMode('error', 'Fant ingen framkommelig rute. Målet kan være omgitt av vann – prøv et annet punkt.'); return; }
-    lastRoute = res; drawRoute(res); setMode('result');
+    lastRoute = res; drawRoute(res); setMode('result'); drawPins();
+    if (rerun){ rerun = false; computeRoute(); }
   }catch(e){
     setMode('error', 'Klarte ikke å hente terrengdata. Sjekk mobildekningen og prøv igjen.');
   }
@@ -530,7 +540,7 @@ function drawRoute(r){
   map.fitBounds(L.latLngBounds(r.pts).pad(.15), {paddingBottomRight:[0, $('#sheet').offsetHeight], paddingTopLeft:[0, 90]});
 }
 function clearRoute(){
-  startLL = targetLL = lastRoute = null; lyr.route.clearLayers(); lyr.pins.clearLayers(); drawDanger(); chips(); setMode('idle');
+  startLL = targetLL = lastRoute = null; startIsGps = false; lyr.route.clearLayers(); lyr.pins.clearLayers(); drawDanger(); chips(); setMode('idle');
 }
 
 /* ---------- Bunnark ---------- */
@@ -545,13 +555,14 @@ function setMode(m, msg){
       <p>Vinden fra MET Nordic legges inn på to måter: ruten unngår å gå med vinden i ryggen, og den holder deg utenfor det røde feltet, der vinden bærer lukten din mot målet. Ruten nærmer seg derfor målet med vinden mot deg.</p>
       <p>Lokale vindforhold i terrenget kan avvike fra prognosen. Bruk vindpuster underveis, og husk at eiendomsgrensene er veiledende.</p></details>`;
     $('#bPlan').onclick = () => { $('#parcel').classList.remove('show'); lyr.parcel.clearLayers(); targetLL = null; lyr.route.clearLayers();
-      if (me){ startLL = me; setMode('pickTarget'); } else setMode('pickStart'); drawPins(); };
+      startLL = null; startIsGps = false; setMode('pickStart'); drawPins(); };
   } else if (m === 'pickStart'){
-    sh.innerHTML = `<p class="step">Trykk der du starter</p><p class="hint">GPS-posisjonen er ikke tilgjengelig, så velg startpunkt i kartet.</p>
-      <div class="row"><button class="btn ghost" id="bCancel">Avbryt</button></div>`;
+    sh.innerHTML = `<p class="step">Velg startpunkt</p><p class="hint">Trykk i kartet der du vil starte${me ? ', eller start fra der du står nå' : '. GPS-posisjonen er ikke tilgjengelig'}.</p>
+      <div class="row">${me ? '<button class="btn primary" id="bUseMe">Bruk min posisjon</button>' : ''}<button class="btn ghost ${me ? 'small' : ''}" id="bCancel">Avbryt</button></div>`;
     $('#bCancel').onclick = clearRoute;
+    if (me) $('#bUseMe').onclick = () => { startLL = me; startIsGps = true; setMode('pickTarget'); drawPins(); };
   } else if (m === 'pickTarget'){
-    sh.innerHTML = `<p class="step">Trykk der du vil gå</p><p class="hint">${startLL === me ? 'Ruten starter fra din posisjon.' : 'Startpunkt er valgt.'} Velg der du regner med å finne dyrene.</p>
+    sh.innerHTML = `<p class="step">Trykk der du vil gå</p><p class="hint">${startIsGps ? 'Ruten starter fra din posisjon.' : 'Startpunktet (S) er satt, og du kan dra det for å flytte det.'} Velg der du regner med å finne dyrene.</p>
       <div class="row"><button class="btn ghost" id="bCancel">Avbryt</button></div>`;
     $('#bCancel').onclick = clearRoute;
   } else if (m === 'computing'){
@@ -567,14 +578,17 @@ function setMode(m, msg){
         <div class="stat"><b>${fmtTime(r.secs)}</b><span>Gangtid</span></div>
         <div class="stat"><b>${nf(Math.round(r.myr/10)*10)} m</b><span>Myr</span></div></div>
       ${warn}
-      <div class="row"><button class="btn primary" id="bRe">Beregn på nytt</button><button class="btn ghost small" id="bClr">Fjern rute</button></div>
+      <p class="hint">Dra ${startIsGps ? 'M' : 'S eller M'} i kartet for å flytte punktet, så beregnes ruten på nytt.</p>
+      <div class="row"><button class="btn primary" id="bRe">Beregn på nytt</button><button class="btn ghost small" id="bNew">Ny rute</button><button class="btn ghost small" id="bClr">Fjern</button></div>
       <div class="legend"><span><i style="background:#0037F8"></i>Rute</span><span><i style="background:#d93a3a55;border:1px solid #d93a3a"></i>Duftsone ved målet</span><span><i style="background:#B0C4FF66;border:1px dashed #0037F8"></i>Din duftsone</span></div>`;
-    $('#bRe').onclick = async () => { if (me) startLL = me; await loadWind(); drawPins(); computeRoute(); };
+    $('#bRe').onclick = async () => { if (startIsGps && me) startLL = me; await loadWind(); drawPins(); computeRoute(); };
+    $('#bNew').onclick = () => { lyr.route.clearLayers(); targetLL = null; startLL = null; startIsGps = false; drawDanger(); chips(); setMode('pickStart'); drawPins(); };
     $('#bClr').onclick = clearRoute;
   } else if (m === 'error'){
     sh.innerHTML = `<p class="step">Ingen rute</p><p class="hint">${msg}</p>
       <div class="row"><button class="btn primary" id="bRetry">Prøv igjen</button><button class="btn ghost small" id="bClr">Avbryt</button></div>`;
     $('#bRetry').onclick = () => targetLL && startLL ? computeRoute() : setMode('pickTarget');
+    drawPins(); if (rerun){ rerun = false; setTimeout(computeRoute, 0); }
     $('#bClr').onclick = clearRoute;
   }
   requestAnimationFrame(positionOverlays);
